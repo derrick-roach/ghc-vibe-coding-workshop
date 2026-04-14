@@ -1,0 +1,11 @@
+[project]
+name = "python"
+version = "0.1.0"
+description = "Simple Social Media API - FastAPI Backend"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "pyyaml>=6.0",
+]
