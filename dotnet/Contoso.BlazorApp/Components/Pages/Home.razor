@@ -1,0 +1,114 @@
+﻿@page "/"
+@layout EmptyLayout
+@rendermode InteractiveServer
+
+@inject AppState AppState
+@inject ApiService Api
+
+@implements IDisposable
+
+<PageTitle>Home</PageTitle>
+
+<div class="flex h-screen bg-white">
+    <Sidebar />
+
+    <div class="flex-1 flex flex-col overflow-hidden">
+        @if (!AppState.ApiAvailable)
+        {
+            <div role="alert" class="bg-red-500 text-white text-sm text-center py-2 px-4">
+                Backend API is currently unavailable or unreachable.
+            </div>
+        }
+
+        <div class="bg-amber-500 px-4 py-3 text-white font-semibold">Hi, there!</div>
+
+        <div class="flex-1 overflow-y-auto relative">
+            @if (_loading)
+            {
+                <p class="text-center text-gray-400 mt-8">Loading...</p>
+            }
+            else if (_posts.Count == 0)
+            {
+                <p class="text-center text-gray-400 mt-8">No posts yet.</p>
+            }
+            else
+            {
+                @foreach (var post in _posts)
+                {
+                    <PostCard Post="post" OnLikeToggle="HandleLikeToggle" />
+                }
+            }
+
+            <button @onclick="HandleNewPostClick" aria-label="Create new post"
+                class="fixed bottom-6 right-6 w-12 h-12 bg-white border border-gray-300 rounded-full shadow-md flex items-center justify-center text-gray-600 hover:bg-gray-100 text-2xl transition-colors">
+                +
+            </button>
+        </div>
+    </div>
+</div>
+
+@if (!HasUsername)
+{
+    <NameInputModal OnSubmit="HandleUsernameSubmit" />
+}
+
+@if (_showPostModal)
+{
+    <PostModal OnClose="ClosePostModal" OnPostCreated="HandlePostCreated" />
+}
+
+@code {
+    private List<Post> _posts = [];
+    private bool _loading = true;
+    private bool _showPostModal;
+
+    private bool HasUsername => !string.IsNullOrEmpty(AppState.Username);
+
+    protected override async Task OnInitializedAsync()
+    {
+        AppState.OnChange += StateHasChanged;
+        await FetchPostsAsync();
+    }
+
+    private async Task FetchPostsAsync()
+    {
+        try
+        {
+            _posts = await Api.ListPostsAsync() ?? [];
+            AppState.ApiAvailable = true;
+        }
+        catch
+        {
+            AppState.ApiAvailable = false;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void HandleUsernameSubmit(string name) => AppState.Username = name;
+
+    private void HandlePostCreated(Post newPost)
+    {
+        _posts = [newPost, .._posts];
+        _showPostModal = false;
+    }
+
+    private void HandleLikeToggle((string PostId, bool Liked) args)
+    {
+        var post = _posts.FirstOrDefault(p => p.Id == args.PostId);
+        if (post is not null)
+            post.LikesCount += args.Liked ? 1 : -1;
+    }
+
+    private void HandleNewPostClick()
+    {
+        if (!HasUsername) return;
+        _showPostModal = true;
+    }
+
+    private void ClosePostModal() => _showPostModal = false;
+
+    public void Dispose() => AppState.OnChange -= StateHasChanged;
+}
