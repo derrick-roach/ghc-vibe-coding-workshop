@@ -1,0 +1,206 @@
+@page "/posts/{PostId}"
+@layout EmptyLayout
+@rendermode InteractiveServer
+
+@inject AppState AppState
+@inject ApiService Api
+
+@implements IDisposable
+
+<PageTitle>Post Details</PageTitle>
+
+<div class="flex h-screen bg-white">
+    <Sidebar />
+
+    <div class="flex-1 flex flex-col overflow-hidden">
+        @if (!AppState.ApiAvailable)
+        {
+            <div role="alert" class="bg-red-500 text-white text-sm text-center py-2 px-4">
+                Backend API is currently unavailable or unreachable.
+            </div>
+        }
+
+        @if (_loading)
+        {
+            <p class="text-center text-gray-400 mt-8">Loading...</p>
+        }
+        else if (_post is null)
+        {
+            <p class="text-center text-gray-400 mt-8">Post not found.</p>
+        }
+        else
+        {
+            <div class="flex-1 flex flex-col overflow-hidden">
+                <!-- Post header -->
+                <div class="bg-amber-500 p-4">
+                    <div class="flex items-center gap-2 mb-1">
+                        <div class="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center flex-shrink-0">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-gray-500" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" />
+                            </svg>
+                        </div>
+                        <span class="font-semibold text-white text-sm">@_post.Username</span>
+                    </div>
+                    <p class="text-white text-sm mb-2 pl-10">@_post.Content</p>
+                    <div class="flex items-center gap-4 pl-10">
+                        <button @onclick="HandleLike" aria-label="@($"Like, {_post.LikesCount} likes")" tabindex="0"
+                            class="flex items-center gap-1 text-white hover:text-red-300 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+                            </svg>
+                            <span class="text-xs">@_post.LikesCount</span>
+                        </button>
+                        <span class="flex items-center gap-1 text-white">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
+                            </svg>
+                            <span class="text-xs">@_post.CommentsCount</span>
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Comments list -->
+                <div class="flex-1 overflow-y-auto">
+                    @if (_comments.Count == 0)
+                    {
+                        <p class="text-center text-gray-400 mt-6 text-sm">No comments yet.</p>
+                    }
+                    else
+                    {
+                        @foreach (var c in _comments)
+                        {
+                            <div key="@c.Id" class="flex items-start gap-2 px-4 py-3 border-b border-gray-100">
+                                <div class="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center flex-shrink-0">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-gray-500" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <p class="text-sm font-semibold text-gray-800">@c.Username</p>
+                                    <p class="text-sm text-gray-600">@c.Content</p>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+
+                <!-- Comment input -->
+                <div class="flex items-center gap-2 px-4 py-3 border-t border-gray-200 bg-white">
+                    <input type="text" @bind="_commentText" @bind:event="oninput"
+                        @onkeydown="HandleCommentKeyDown"
+                        placeholder="Enter comment"
+                        aria-label="Add a comment"
+                        maxlength="1000"
+                        class="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                    <button @onclick="HandleAddComment" aria-label="Submit comment" tabindex="0"
+                        disabled="@(string.IsNullOrWhiteSpace(_commentText) || _submitting)"
+                        class="w-8 h-8 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white rounded flex items-center justify-center text-lg font-bold transition-colors">
+                        +
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@if (!HasUsername)
+{
+    <NameInputModal OnSubmit="HandleUsernameSubmit" />
+}
+
+@code {
+    [Parameter] public string PostId { get; set; } = string.Empty;
+
+    private Post? _post;
+    private List<Comment> _comments = [];
+    private string _commentText = string.Empty;
+    private bool _loading = true;
+    private bool _submitting;
+
+    private bool HasUsername => !string.IsNullOrEmpty(AppState.Username);
+
+    protected override async Task OnInitializedAsync()
+    {
+        AppState.OnChange += StateHasChanged;
+        await FetchDataAsync();
+    }
+
+    private async Task FetchDataAsync()
+    {
+        try
+        {
+            var postTask = Api.GetPostAsync(PostId);
+            var commentsTask = Api.ListCommentsAsync(PostId);
+            await Task.WhenAll(postTask, commentsTask);
+
+            _post = await postTask;
+            _comments = await commentsTask ?? [];
+            AppState.ApiAvailable = true;
+        }
+        catch
+        {
+            AppState.ApiAvailable = false;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task HandleLike()
+    {
+        if (string.IsNullOrEmpty(AppState.Username) || _post is null) return;
+        try
+        {
+            await Api.LikePostAsync(_post.Id, AppState.Username);
+            _post.LikesCount++;
+            AppState.ApiAvailable = true;
+        }
+        catch
+        {
+            try
+            {
+                await Api.UnlikePostAsync(_post.Id);
+                _post.LikesCount = Math.Max(0, _post.LikesCount - 1);
+            }
+            catch
+            {
+                AppState.ApiAvailable = false;
+            }
+        }
+    }
+
+    private async Task HandleAddComment()
+    {
+        if (string.IsNullOrWhiteSpace(_commentText) || _submitting || string.IsNullOrEmpty(AppState.Username)) return;
+        _submitting = true;
+        try
+        {
+            var newComment = await Api.CreateCommentAsync(PostId, AppState.Username, _commentText.Trim());
+            if (newComment is not null)
+            {
+                _comments.Add(newComment);
+                if (_post is not null) _post.CommentsCount++;
+            }
+            _commentText = string.Empty;
+            AppState.ApiAvailable = true;
+        }
+        catch
+        {
+            AppState.ApiAvailable = false;
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    private async Task HandleCommentKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await HandleAddComment();
+    }
+
+    private void HandleUsernameSubmit(string name) => AppState.Username = name;
+
+    public void Dispose() => AppState.OnChange -= StateHasChanged;
+}

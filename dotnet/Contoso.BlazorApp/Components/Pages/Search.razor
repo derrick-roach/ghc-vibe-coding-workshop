@@ -1,0 +1,149 @@
+@page "/search"
+@layout EmptyLayout
+@rendermode InteractiveServer
+
+@inject AppState AppState
+@inject ApiService Api
+
+@implements IDisposable
+
+<PageTitle>Search</PageTitle>
+
+<div class="flex h-screen bg-white">
+    <Sidebar />
+
+    <div class="flex-1 flex flex-col overflow-hidden">
+        @if (!AppState.ApiAvailable)
+        {
+            <div role="alert" class="bg-red-500 text-white text-sm text-center py-2 px-4">
+                Backend API is currently unavailable or unreachable.
+            </div>
+        }
+
+        <div class="flex items-center gap-2 px-4 py-3 bg-white border-b border-gray-200">
+            <input type="text" @bind="_query" @bind:event="oninput"
+                @onkeydown="HandleSearchKeyDown"
+                placeholder="Enter keywords to search..."
+                aria-label="Search posts"
+                class="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            <button @onclick="HandleSearch" aria-label="Search"
+                class="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16a6.471 6.471 0 0 0 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
+                </svg>
+            </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto relative">
+            @if (_loading)
+            {
+                <p class="text-center text-gray-400 mt-8">Loading...</p>
+            }
+            else if (_filtered.Count == 0)
+            {
+                <p class="text-center text-gray-400 mt-8">No results found.</p>
+            }
+            else
+            {
+                @foreach (var post in _filtered)
+                {
+                    <PostCard Post="post" OnLikeToggle="HandleLikeToggle" />
+                }
+            }
+
+            <button @onclick="HandleNewPostClick" aria-label="Create new post"
+                class="fixed bottom-6 right-6 w-12 h-12 bg-white border border-gray-300 rounded-full shadow-md flex items-center justify-center text-gray-600 hover:bg-gray-100 text-2xl transition-colors">
+                +
+            </button>
+        </div>
+    </div>
+</div>
+
+@if (!HasUsername)
+{
+    <NameInputModal OnSubmit="HandleUsernameSubmit" />
+}
+
+@if (_showPostModal)
+{
+    <PostModal OnClose="ClosePostModal" OnPostCreated="HandlePostCreated" />
+}
+
+@code {
+    private string _query = string.Empty;
+    private List<Post> _allPosts = [];
+    private List<Post> _filtered = [];
+    private bool _showPostModal;
+    private bool _loading = true;
+
+    private bool HasUsername => !string.IsNullOrEmpty(AppState.Username);
+
+    protected override async Task OnInitializedAsync()
+    {
+        AppState.OnChange += StateHasChanged;
+        await FetchPostsAsync();
+    }
+
+    private async Task FetchPostsAsync()
+    {
+        try
+        {
+            _allPosts = await Api.ListPostsAsync() ?? [];
+            _filtered = [.._allPosts];
+            AppState.ApiAvailable = true;
+        }
+        catch
+        {
+            AppState.ApiAvailable = false;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void HandleSearch()
+    {
+        var q = _query.Trim().ToLower();
+        if (string.IsNullOrEmpty(q))
+        {
+            _filtered = [.._allPosts];
+            return;
+        }
+        _filtered = _allPosts
+            .Where(p => p.Content.ToLower().Contains(q) || p.Username.ToLower().Contains(q))
+            .ToList();
+    }
+
+    private void HandleSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") HandleSearch();
+    }
+
+    private void HandleLikeToggle((string PostId, bool Liked) args)
+    {
+        foreach (var p in _allPosts.Where(p => p.Id == args.PostId))
+            p.LikesCount += args.Liked ? 1 : -1;
+        foreach (var p in _filtered.Where(p => p.Id == args.PostId))
+            p.LikesCount += args.Liked ? 1 : -1;
+    }
+
+    private void HandlePostCreated(Post newPost)
+    {
+        _allPosts = [newPost, .._allPosts];
+        _filtered = [newPost, .._filtered];
+        _showPostModal = false;
+    }
+
+    private void HandleUsernameSubmit(string name) => AppState.Username = name;
+
+    private void HandleNewPostClick()
+    {
+        if (!HasUsername) return;
+        _showPostModal = true;
+    }
+
+    private void ClosePostModal() => _showPostModal = false;
+
+    public void Dispose() => AppState.OnChange -= StateHasChanged;
+}

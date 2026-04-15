@@ -1,0 +1,61 @@
+@inject ApiService Api
+@inject AppState AppState
+
+<div role="dialog" aria-modal="true" aria-label="Create a new post"
+    class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50"
+    @onkeydown="HandleKeyDown">
+    <div class="bg-white rounded-lg p-4 w-72 shadow-lg">
+        <textarea @bind="_content" @bind:event="oninput"
+            placeholder="How do you feel today?"
+            aria-label="Post content"
+            maxlength="2000"
+            rows="5"
+            class="w-full border border-gray-200 rounded p-2 text-sm resize-none bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-400 mb-3"></textarea>
+        <div class="flex gap-2">
+            <button @onclick="HandleSubmit" tabindex="0" aria-label="Submit post"
+                disabled="@(string.IsNullOrWhiteSpace(_content) || _submitting)"
+                class="flex-1 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white text-sm py-1.5 rounded transition-colors">
+                Submit
+            </button>
+            <button @onclick="OnClose" tabindex="0" aria-label="Cancel"
+                class="flex-1 bg-blue-200 hover:bg-blue-300 text-blue-800 text-sm py-1.5 rounded transition-colors">
+                Cancel
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<Post> OnPostCreated { get; set; }
+
+    private string _content = string.Empty;
+    private bool _submitting;
+
+    private async Task HandleSubmit()
+    {
+        if (string.IsNullOrWhiteSpace(_content) || _submitting) return;
+        _submitting = true;
+        try
+        {
+            var post = await Api.CreatePostAsync(AppState.Username, _content.Trim());
+            AppState.ApiAvailable = true;
+            if (post is not null)
+                await OnPostCreated.InvokeAsync(post);
+            await OnClose.InvokeAsync();
+        }
+        catch
+        {
+            AppState.ApiAvailable = false;
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") await OnClose.InvokeAsync();
+    }
+}
